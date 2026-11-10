@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {freshState,readState,validatePlan,completion,exportCsv,csvCell} from './dist/model.js';
+import {rows,languages,text,moveNames,nameFor} from './dist/i18n.js';
+test('every interface phrase and movement name exists in all three languages',()=>{for(const [key,values]of Object.entries(rows)){assert.equal(values.length,3,key);for(const lang of languages)assert.ok(text(lang,key).length,key)}assert.equal(moveNames.length,8);for(let id=0;id<8;id++)for(const lang of languages)assert.ok(nameFor(lang,id))});
+test('invalid plans cannot become prescriptions',()=>{assert.ok(validatePlan(freshState().plan));for(const p of [[],[{id:0,reps:0}],[{id:0,reps:31}],[{id:0,reps:2.5}],[{id:8,reps:6}],[{id:0,reps:6},{id:0,reps:6}]])assert.equal(validatePlan(p),false)});
+test('completion uses recorded reps, without credit for a skipped movement',()=>{const p=[{id:0,reps:6},{id:2,reps:6}];assert.equal(completion([6,0],p),50);assert.equal(completion([6,6],p),100);assert.equal(completion([8,-1],p),50)});
+test('corrupt storage recovers while valid records and language survive reload',()=>{assert.deepEqual(readState({getItem:()=>'{bad'}),freshState());const s={...freshState(),lang:'yue',logs:[]};assert.deepEqual(readState({getItem:()=>JSON.stringify(s)}),s);assert.equal(readState({getItem:()=>{throw Error()}}).lang,'yue')});
+test('CSV exports raw records, quotes notes and prevents spreadsheet formula execution',()=>{assert.equal(csvCell('=1+1'),'"\'=1+1"');const output=exportCsv([{id:'1',startedAt:'2026-11-07T00:00:00Z',endedAt:'2026-11-07T00:01:00Z',seconds:60,pre:3,post:2,effort:4,completion:50,status:'stopped',feedback:'summary',note:'hello, "world"\nnext line',plan:[{id:0,reps:6}],counts:[3]}]);assert.ok(output.includes('"hello, ""world""\nnext line"'));assert.ok(output.includes('ai_feedback_delivered'));assert.ok(output.includes('"false"'))});
+
+test('new browsers default to Cantonese while explicit preferences survive',()=>{assert.equal(freshState().lang,'yue');assert.equal(readState({getItem:()=>null}).lang,'yue');const s={...freshState(),lang:'en'};assert.equal(readState({getItem:()=>JSON.stringify(s)}).lang,'en')});
